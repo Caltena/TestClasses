@@ -1,0 +1,88 @@
+
+# Wird nach dem Push auf den Branch 'development' ausgefuehrt
+# ###########################################################
+trigger:
+  branches:
+    include:
+    - development
+
+# Variablen
+# ###########################################################
+variables:
+- name: solution
+  value: '**/*.sln'
+- name: buildPlatform
+  value: 'Any CPU'
+- name: buildConfiguration
+  value: 'Release'
+- name: buildsolution
+  value: '**/bin/'
+  
+stages:
+- stage: __default
+  jobs:
+  - job: Job
+    pool:
+      vmImage: 'windows-latest'
+    steps:
+
+    # Ruft eine bestimmte Version von NuGet aus dem Internet oder 
+    # dem Toolscache ab und fügt sie dem PFAD hinzu.
+    - task: NuGetToolInstaller@0
+      displayName: 'Use NuGet 6.0.0'
+      inputs:
+        versionSpec: 6.0.0
+
+    # Wiederherstellen, Packen oder Pushen von NuGet-Paketen 
+    # oder Ausführen eines NuGet-Befehls.
+    - task: NuGetCommand@2
+      displayName: 'NuGet restore'
+      inputs:
+        restoreSolution: '$(solution)'
+
+    # Erstellen Sie mit MSBuild
+    - task: VSBuild@1
+      displayName: 'Build solution **\*.sln'
+      inputs:
+        solution: '$(solution)'
+        vsVersion: 17.0
+        platform: '$(BuildPlatform)'
+        configuration: '$(BuildConfiguration)'
+        
+    # Der dotnet vstest-Befehl fuehrt die VSTest.Console-Befehlszeilenanwendung 
+    # aus, um automatisierte Komponententests auszufuehren.
+    - task: VSTest@2
+      displayName: 'VsTest - testAssemblies'
+      inputs:
+        testAssemblyVer2: |
+          **\$(BuildConfiguration)\*test*.dll
+          !**\obj\**
+        platform: '$(BuildPlatform)'
+        configuration: '$(BuildConfiguration)'
+
+    # Indizieren des Quellcode, und veroeffentlichen 
+    # der Symbole auf einer Dateifreigabe oder einem Azure Artifacts-Symbolserver.
+    - task: PublishSymbols@2
+      displayName: 'Publish symbols path'
+      inputs:
+        SearchPattern: '**\bin\**\*.pdb'
+        PublishSymbols: false
+      continueOnError: true
+
+    # Kopieren der Dateien aus einem Quellordner in einen Zielordner mithilfe 
+    # von Mustern uebereinstimmender Dateipfade (nicht Ordnerpfade).
+    - task: CopyFiles@2
+      displayName: 'Copy Files to: $(build.artifactstagingdirectory)'
+      inputs:
+        SourceFolder: '$(system.defaultworkingdirectory)'
+        Contents: '**\bin\$(BuildConfiguration)\**'
+        TargetFolder: '$(build.artifactstagingdirectory)'
+      condition: succeededOrFailed()
+
+    # Veroeffentlichen Sie Buildartefakte in Azure Pipelines oder einer Windows-Dateifreigabe.
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Artifact: drop'
+      inputs:
+        PathtoPublish: '$(build.artifactstagingdirectory)'
+      condition: succeededOrFailed()
+
